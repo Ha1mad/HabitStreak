@@ -9,10 +9,9 @@ HabitStreak is a polished React Native habit tracker built with Expo Router. It 
 - Daily streak tracking with recovery saves
 - Notes for each check-in
 - Weekly rhythm summary and history previews
-- Premium plan preview with free and premium feature breakdowns
+- Premium plan info with free and premium feature breakdowns
 - Local notification reminders with custom times
 - Theme packs and app icon styles
-- iOS widget scaffolding and preview support
 - Onboarding flow for first-time users
 
 ## Tech Stack
@@ -23,16 +22,14 @@ HabitStreak is a polished React Native habit tracker built with Expo Router. It 
 - TypeScript
 - AsyncStorage for local persistence
 - Expo Notifications for reminders
-- Expo Widgets scaffolding for iOS widget support
 
 ## Project Structure
 
 - `app/` - Expo Router screens, layouts, and app logic
-- `app/lib/` - Habit, reminder, subscription, premium, and widget helpers
+- `app/lib/` - Habit, reminder, subscription, and premium helpers
 - `app/context/` - Theme provider and app-wide UI state
 - `assets/` - App branding, splash, and icon assets
 - `components/` - Shared UI components from the Expo template
-- `widgets/` - Widget definitions and preview data
 - `scripts/` - Brand asset generator and repo helper scripts
 
 ## Getting Started
@@ -52,13 +49,11 @@ npx expo start
 3. Open the project in one of the supported targets:
 - Expo Go for standard app testing
 - iOS simulator or Android emulator for device-style testing
-- a development build for native features like widgets
 
 ## Notes For Testing
 
 - Local notifications work in Expo Go, but device settings like Focus and Do Not Disturb can suppress them.
-- iOS widget testing requires a development build, not Expo Go.
-- Premium is currently previewed in-app. Real App Store and Google Play billing should be connected later.
+- Premium is currently informational only. Real App Store and Google Play billing should be connected later.
 
 ## Recommended First Commits
 
@@ -67,7 +62,7 @@ If you are turning this into a public GitHub portfolio repo, a clean commit hist
 1. `chore: initialize HabitStreak app structure`
 2. `feat: add habit tracking and streak persistence`
 3. `feat: add reminders, notes, and habit history`
-4. `feat: add insights, themes, and premium preview`
+4. `feat: add insights, themes, and premium info`
 5. `feat: add branding, splash, and app icon system`
 6. `docs: add portfolio README and repo hygiene`
 
