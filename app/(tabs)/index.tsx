@@ -164,8 +164,8 @@ export default function HomeScreen() {
   const [paywallReason, setPaywallReason] = useState(() => t('Unlock premium to keep growing.'));
   const [isWelcomePromoActive, setIsWelcomePromoActive] = useState(true);
   const [welcomePromoDaysLeft, setWelcomePromoDaysLeft] = useState(WELCOME_PROMO_WINDOW_DAYS);
-  const swipeX = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [swipeX] = useState(() => new Animated.Value(0));
+  const [scaleAnim] = useState(() => new Animated.Value(1));
   const currentHabitIndexRef = useRef(0);
   const habitsLengthRef = useRef(0);
 
@@ -201,6 +201,8 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    // Hydrate persisted state after the initial render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     hydrate();
   }, [hydrate]);
 
@@ -231,11 +233,14 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (habits.length === 0 && currentHabitIndex !== 0) {
+      // Keep the selected habit valid after deletion.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentHabitIndex(0);
       return;
     }
 
     if (currentHabitIndex > habits.length - 1) {
+      // Keep the selected habit valid after deletion.
       setCurrentHabitIndex(Math.max(0, habits.length - 1));
     }
   }, [currentHabitIndex, habits.length]);
@@ -255,8 +260,10 @@ export default function HomeScreen() {
   const calendarHistory = useMemo(() => (currentHabit ? getCalendarHistory(currentHabit) : []), [currentHabit]);
   const recentNotes = useMemo(() => (currentHabit ? getRecentNotes(currentHabit) : []), [currentHabit]);
 
-  currentHabitIndexRef.current = currentHabitIndex;
-  habitsLengthRef.current = habits.length;
+  useEffect(() => {
+    currentHabitIndexRef.current = currentHabitIndex;
+    habitsLengthRef.current = habits.length;
+  }, [currentHabitIndex, habits.length]);
 
   const openPaywall = useCallback((reason: string) => {
     setPaywallReason(reason);

@@ -5,9 +5,45 @@ import { Habit } from './habits';
 
 export const NOTIFICATIONS_ENABLED_KEY = 'notificationsEnabled';
 
+export async function getReminderDebugInfo() {
+  return [] as ReminderDebugEntry[];
+}
+
+export async function getScheduledNotificationsCount() {
+  return (await Notifications.getAllScheduledNotificationsAsync()).length;
+}
+
+export async function sendImmediateTestNotification() {
+  const permissionGranted = await requestReminderPermissions();
+  if (!permissionGranted) {
+    return { ok: false };
+  }
+  await Notifications.scheduleNotificationAsync({ content: { title: 'HabitStreak', body: 'Test notification' }, trigger: null });
+  return { ok: true };
+}
+
+export async function scheduleTestReminderNotification() {
+  const permissionGranted = await requestReminderPermissions();
+  if (!permissionGranted) {
+    return { ok: false };
+  }
+  await Notifications.scheduleNotificationAsync({
+    content: { title: 'HabitStreak', body: 'Test reminder' },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 10, repeats: false },
+  });
+  return { ok: true };
+}
+
 const REMINDER_CHANNEL_ID = 'habit-reminders';
 const SCHEDULED_REMINDER_IDS_KEY = 'scheduledReminderIdsByHabit';
 type ReminderMap = Record<string, string[]>;
+type ReminderDebugEntry = {
+  habitName: string;
+  reminderTime: string;
+  expectedNextAt: string;
+  dailyTriggerAt: string | null;
+  bootstrapTriggerAt: string | null;
+};
 
 let notificationsConfigured = false;
 

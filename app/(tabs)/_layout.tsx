@@ -60,21 +60,21 @@ export default function TabLayout() {
         name="index"
         options={{
           title: t('Home'),
-          tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} activeName="home" inactiveName="home-outline" />,
+          tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={String(color)} activeName="home" inactiveName="home-outline" />,
         }}
       />
       <Tabs.Screen
         name="insights"
         options={{
           title: t('Insights'),
-          tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} activeName="bar-chart" inactiveName="bar-chart-outline" />,
+          tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={String(color)} activeName="bar-chart" inactiveName="bar-chart-outline" />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: t('Settings'),
-          tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} activeName="settings" inactiveName="settings-outline" />,
+          tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={String(color)} activeName="settings" inactiveName="settings-outline" />,
         }}
       />
     </Tabs>

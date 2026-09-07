@@ -25,3 +25,11 @@ export const subscriptionOffers = [
 export function getSubscriptionSupportText() {
   return 'Premium billing will be added in a future release.';
 }
+
+export function getPremiumCtaLabel(_isPremium = false) {
+  return 'Unlock Premium';
+}
+
+export function isExpoGoEnvironment() {
+  return true;
+}
