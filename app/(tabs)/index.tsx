@@ -153,6 +153,9 @@ export default function HomeScreen() {
 
   const accentColor = premiumThemePacks[premiumProfile.themePack].accent;
   const extraPremiumColors = PREMIUM_COLORS.filter(color => !PRESET_COLORS.includes(color));
+  const openPaywall = useCallback((reason: string) => {
+    Alert.alert('Premium feature', reason);
+  }, []);
 
   const hydrate = useCallback(async () => {
     try {
@@ -845,20 +848,6 @@ export default function HomeScreen() {
             <Text style={[styles.introStep, { color: colors.text }]}>2. Choose a color and reminder</Text>
             <Text style={[styles.introStep, { color: colors.text }]}>3. Add quick notes after check-ins</Text>
           </View>
-          {!premiumProfile.softPaywallSeen && isWelcomePromoActive ? (
-            <TouchableOpacity
-              style={[styles.softPaywallCard, { backgroundColor: colors.background, borderColor: colors.border }]}
-              onPress={() => openPaywall('Premium is optional, but it unlocks the full HabitStreak system when you are ready.')}
-            >
-              <Text style={[styles.softPaywallTitle, { color: colors.text }]}>Try HabitStreak Premium</Text>
-              <Text style={[styles.helperCopy, { color: colors.textSecondary }]}>
-                Unlimited habits, smarter reminders, full calendar history, widgets, premium themes, and deeper streak protection.
-              </Text>
-              <Text style={[styles.helperCopy, { color: colors.textSecondary, marginTop: 8 }]}>
-                Premium plans are coming in a later release • Monthly $4.99 • Yearly $29.99
-              </Text>
-            </TouchableOpacity>
-          ) : null}
           <TouchableOpacity style={[styles.primaryButton, { backgroundColor: accentColor }]} onPress={openCreateModal}>
             <Text style={styles.primaryButtonText}>Create Your First Habit</Text>
           </TouchableOpacity>
@@ -866,7 +855,6 @@ export default function HomeScreen() {
         {renderHabitModal()}
         {renderColorModal()}
         {renderDeleteModal()}
-        {renderPaywallModal()}
       </View>
     );
   }
@@ -1024,9 +1012,7 @@ export default function HomeScreen() {
       {renderColorModal()}
       {renderDeleteModal()}
       {renderCheckInModal()}
-      {renderPaywallModal()}
       {renderCalendarModal()}
-      {renderPlanModal()}
     </View>
   );
 }
