@@ -1,7 +1,8 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { ColorValue, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
+import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 
 function TabIcon({
@@ -11,7 +12,7 @@ function TabIcon({
   inactiveName,
 }: {
   focused: boolean;
-  color: ColorValue;
+  color: string;
   activeName: keyof typeof Ionicons.glyphMap;
   inactiveName: keyof typeof Ionicons.glyphMap;
 }) {
@@ -33,6 +34,7 @@ function TabIcon({
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const { t } = useLanguage();
 
   return (
     <Tabs
@@ -57,21 +59,21 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('Home'),
           tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} activeName="home" inactiveName="home-outline" />,
         }}
       />
       <Tabs.Screen
         name="insights"
         options={{
-          title: 'Insights',
+          title: t('Insights'),
           tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} activeName="bar-chart" inactiveName="bar-chart-outline" />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: t('Settings'),
           tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} activeName="settings" inactiveName="settings-outline" />,
         }}
       />

@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import {
   Habit,
   getCalendarHistory,
@@ -23,6 +24,7 @@ import {
 
 export default function InsightsScreen() {
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [premiumProfile, setPremiumProfile] = useState<PremiumProfile>(defaultPremiumProfile);
   const [selectedHabitIndex, setSelectedHabitIndex] = useState(0);
@@ -43,7 +45,7 @@ export default function InsightsScreen() {
   const currentHabit = habits[selectedHabitIndex];
   const overallStats = useMemo(() => getOverallStats(habits), [habits]);
   const habitStats = useMemo(() => (currentHabit ? getHabitStats(currentHabit) : null), [currentHabit]);
-  const coachSummary = useMemo(() => (currentHabit ? getCoachSummary(currentHabit) : null), [currentHabit]);
+  const coachSummary = useMemo(() => (currentHabit ? getCoachSummary(currentHabit, t) : null), [currentHabit, t]);
   const calendarDays = premiumProfile.isPremium ? 35 : 5;
   const calendarHistory = useMemo(() => (currentHabit ? getCalendarHistory(currentHabit, calendarDays) : []), [currentHabit, calendarDays]);
   const weeklyHistory = useMemo(() => (currentHabit ? getWeeklyHistory(currentHabit) : []), [currentHabit]);
@@ -53,16 +55,16 @@ export default function InsightsScreen() {
     const nextProfile = { ...premiumProfile, isPremium: true, softPaywallSeen: true };
     setPremiumProfile(nextProfile);
     await savePremiumProfile(nextProfile);
-    Alert.alert('Premium unlocked', 'Insights Premium is now enabled on this device.');
-  }, [premiumProfile]);
+    Alert.alert(t('Premium unlocked'), t('Insights Premium is now enabled on this device.'));
+  }, [premiumProfile, t]);
 
   if (habits.length === 0 || !currentHabit) {
     return (
       <View style={[styles.emptyScreen, { backgroundColor: colors.background }]}>
         <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>Insights</Text>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>{t('Insights')}</Text>
           <Text style={[styles.emptyCopy, { color: colors.textSecondary }]}>
-            Create a habit first and this page will start showing trends, streak health, coach reviews, and deeper progress summaries.
+            {t('Create a habit first and this page will start showing trends, streak health, coach reviews, and deeper progress summaries.')}
           </Text>
         </View>
       </View>
@@ -72,8 +74,8 @@ export default function InsightsScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Insights</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>A deeper look at your momentum, patterns, and coaching signals.</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{t('Insights')}</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('A deeper look at your momentum, patterns, and coaching signals.')}</Text>
       </View>
 
       <View style={styles.habitPicker}>
@@ -95,28 +97,31 @@ export default function InsightsScreen() {
       </View>
 
       <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>At A Glance</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('At A Glance')}</Text>
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
             <Text style={[styles.statValue, { color: colors.text }]}>{habitStats?.monthlyCompleted ?? 0}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>30-day Wins</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('30-day Wins')}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statValue, { color: colors.text }]}>{habitStats?.noteUsageRate ?? 0}%</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Note Rate</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Note Rate')}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statValue, { color: colors.text }]}>{habitStats?.reminderCount ?? 1}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Reminders</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Reminders')}</Text>
           </View>
         </View>
         <Text style={[styles.helperCopy, { color: colors.textSecondary }]}>
-          Overall completion across all habits: {overallStats.completionRate}% • Weekly consistency: {overallStats.weeklyConsistency}%
+          {t('Overall completion across all habits: {{rate}}% • Weekly consistency: {{weekly}}%', {
+            rate: overallStats.completionRate,
+            weekly: overallStats.weeklyConsistency,
+          })}
         </Text>
       </View>
 
       <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Weekly Rhythm</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Weekly Rhythm')}</Text>
         <View style={styles.weekRow}>
           {weeklyHistory.map(day => {
             const backgroundColor = day.state === 'done' ? currentHabit.color : day.state === 'recovered' ? '#F59E0B' : colors.background;
@@ -128,7 +133,7 @@ export default function InsightsScreen() {
                   </Text>
                 </View>
                 <Text style={[styles.weekState, { color: colors.textSecondary }]}>
-                  {day.state === 'done' ? 'Done' : day.state === 'recovered' ? 'Saved' : day.state === 'today' ? 'Today' : 'Miss'}
+                  {t(day.state === 'done' ? 'Done' : day.state === 'recovered' ? 'Saved' : day.state === 'today' ? 'Today' : 'Miss')}
                 </Text>
               </View>
             );
@@ -141,11 +146,11 @@ export default function InsightsScreen() {
         activeOpacity={premiumProfile.isPremium ? 1 : 0.9}
         onPress={() => {
           if (!premiumProfile.isPremium) {
-            Alert.alert('Premium calendar', 'Full monthly calendar insights are part of Premium.');
+            Alert.alert(t('Premium calendar'), t('Full monthly calendar insights are part of Premium.'));
           }
         }}
       >
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Calendar View</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Calendar View')}</Text>
         <View style={styles.calendarGrid}>
           {calendarHistory.map(day => {
             const backgroundColor = day.state === 'done' ? currentHabit.color : day.state === 'recovered' ? '#F59E0B' : colors.background;
@@ -158,8 +163,8 @@ export default function InsightsScreen() {
         </View>
         <Text style={[styles.helperCopy, { color: colors.textSecondary }]}>
           {premiumProfile.isPremium
-            ? 'Your last 35 days of check-ins and recovery saves.'
-            : 'Free preview shows the last 5 days. Upgrade to unlock the full interactive history calendar.'}
+            ? t('Your last 35 days of check-ins and recovery saves.')
+            : t('Free preview shows the last 5 days. Upgrade to unlock the full interactive history calendar.')}
         </Text>
       </TouchableOpacity>
 
@@ -168,11 +173,11 @@ export default function InsightsScreen() {
         activeOpacity={premiumProfile.isPremium ? 1 : 0.9}
         onPress={() => {
           if (!premiumProfile.isPremium) {
-            Alert.alert('Premium coach', 'Coach reviews and pattern summaries are part of Premium.');
+            Alert.alert(t('Premium coach'), t('Coach reviews and pattern summaries are part of Premium.'));
           }
         }}
       >
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Coach Review</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Coach Review')}</Text>
         {premiumProfile.isPremium && coachSummary ? (
           <>
             <Text style={[styles.coachHeadline, { color: colors.text }]}>{coachSummary.headline}</Text>
@@ -181,16 +186,16 @@ export default function InsightsScreen() {
             <Text style={[styles.helperCopy, { color: colors.textSecondary }]}>{coachSummary.suggestion}</Text>
           </>
         ) : (
-          <Text style={[styles.helperCopy, { color: colors.textSecondary }]}>Upgrade to unlock weekly reviews, note summaries, and deeper coaching suggestions.</Text>
+          <Text style={[styles.helperCopy, { color: colors.textSecondary }]}>{t('Upgrade to unlock weekly reviews, note summaries, and deeper coaching suggestions.')}</Text>
         )}
       </TouchableOpacity>
 
       {!premiumProfile.isPremium ? (
         <View style={[styles.premiumCard, { backgroundColor: premiumThemePacks[premiumProfile.themePack].card }]}>
-          <Text style={styles.premiumTitle}>Insights Premium</Text>
-          <Text style={styles.premiumCopy}>{getPremiumMessage()}</Text>
+          <Text style={styles.premiumTitle}>{t('Insights Premium')}</Text>
+          <Text style={styles.premiumCopy}>{t(getPremiumMessage())}</Text>
           <TouchableOpacity style={[styles.upgradeButton, { backgroundColor: accentColor }]} onPress={handleUpgrade}>
-            <Text style={styles.upgradeButtonText}>Unlock Premium</Text>
+            <Text style={styles.upgradeButtonText}>{t('Unlock Premium')}</Text>
           </TouchableOpacity>
         </View>
       ) : null}

@@ -1,12 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router/react-navigation';
+import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import {
   Alert,
+  Modal,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { DEFAULT_REMINDER_TIME, Habit, formatReminderTime, formatReminderTimes, getCoachSummary, getOverallStats, loadHabits, saveHabits } from '../lib/habits';
 import {
   FREE_HABIT_LIMIT,
@@ -27,12 +28,17 @@ import {
   savePremiumProfile,
 } from '../lib/premium';
 import {
+  getReminderDebugInfo,
+  getScheduledNotificationsCount,
   NOTIFICATIONS_ENABLED_KEY,
   cancelAllHabitReminders,
   requestReminderPermissions,
+  scheduleTestReminderNotification,
+  sendImmediateTestNotification,
   syncHabitReminders,
 } from '../lib/reminders';
-import { getSubscriptionSupportText, subscriptionOffers } from '../lib/subscriptions';
+import { getSubscriptionSupportText, isExpoGoEnvironment, subscriptionOffers } from '../lib/subscriptions';
+import { syncHabitWidgets } from '../lib/widget-sync';
 
 const REMINDER_OPTIONS = ['07:00', '08:00', '12:00', '18:00', '20:00', '21:00'];
 
@@ -77,26 +83,42 @@ function normalizeReminderInput(value: string) {
 
 export default function SettingsScreen() {
   const { theme, toggleTheme, colors, activeThemePack, refreshThemePreferences } = useTheme();
+  const { language, setLanguage, t, tForLanguage } = useLanguage();
   const [habits, setHabits] = useState<Habit[]>([]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [defaultReminderTime, setDefaultReminderTime] = useState(DEFAULT_REMINDER_TIME);
   const [customReminderTime, setCustomReminderTime] = useState('');
   const [premiumProfile, setPremiumProfile] = useState<PremiumProfile>(defaultPremiumProfile);
   const [showThemes, setShowThemes] = useState(false);
+  const [showWidgetPreview, setShowWidgetPreview] = useState(false);
+  const [reminderDebugLines, setReminderDebugLines] = useState<string[]>([]);
+
+  const mapReminderDebugLines = useCallback(async () => {
+    const debugInfo = await getReminderDebugInfo();
+    return debugInfo.map(entry => {
+      const expected = new Date(entry.expectedNextAt).toLocaleString();
+      const daily = entry.dailyTriggerAt ? new Date(entry.dailyTriggerAt).toLocaleString() : t('not available');
+      const bootstrap = entry.bootstrapTriggerAt ? ` • ${t('first boost')} ${new Date(entry.bootstrapTriggerAt).toLocaleTimeString()}` : '';
+      return `${entry.habitName} • ${formatReminderTime(entry.reminderTime)} • ${t('next')} ${expected} • ${t('daily')} ${daily}${bootstrap}`;
+    });
+  }, [t]);
 
   const loadData = useCallback(async () => {
-    const [savedHabits, notificationsValue, reminderValue, savedProfile] = await Promise.all([
+    const [savedHabits, notificationsValue, reminderValue, savedProfile, debugLines] = await Promise.all([
       loadHabits(),
       AsyncStorage.getItem('notificationsEnabled'),
       AsyncStorage.getItem('defaultReminderTime'),
       loadPremiumProfile(),
+      mapReminderDebugLines(),
     ]);
 
     setHabits(savedHabits);
     setNotificationsEnabled(notificationsValue !== 'false');
     setDefaultReminderTime(reminderValue || DEFAULT_REMINDER_TIME);
     setPremiumProfile(savedProfile);
-  }, []);
+    setReminderDebugLines(debugLines);
+    void syncHabitWidgets(savedHabits, savedProfile);
+  }, [mapReminderDebugLines]);
 
   useFocusEffect(
     useCallback(() => {
@@ -105,8 +127,9 @@ export default function SettingsScreen() {
   );
 
   const overallStats = useMemo(() => getOverallStats(habits), [habits]);
-  const topCoach = useMemo(() => (habits.length > 0 ? getCoachSummary(habits[0]) : null), [habits]);
+  const topCoach = useMemo(() => (habits.length > 0 ? getCoachSummary(habits[0], t) : null), [habits, t]);
   const accentColor = premiumThemePacks[premiumProfile.themePack].accent;
+  const previewHabit = habits[0];
 
   const cycleReminderTime = useCallback(async () => {
     const currentIndex = REMINDER_OPTIONS.indexOf(defaultReminderTime);
@@ -117,21 +140,21 @@ export default function SettingsScreen() {
 
   const addCustomReminderTime = useCallback(async () => {
     if (!premiumProfile.isPremium) {
-      Alert.alert('Premium reminders', 'Custom reminder times are part of Premium.');
+      Alert.alert(t('Premium reminders'), t('Custom reminder times are part of Premium.'));
       return;
     }
 
     const normalizedTime = normalizeReminderInput(customReminderTime);
 
     if (!normalizedTime) {
-      Alert.alert('Invalid time', 'Use a time like 6:45 AM, 9:15 PM, or 21:15.');
+      Alert.alert(t('Invalid time'), t('Use a time like 6:45 AM, 9:15 PM, or 21:15.'));
       return;
     }
 
     setDefaultReminderTime(normalizedTime);
     setCustomReminderTime('');
     await AsyncStorage.setItem('defaultReminderTime', normalizedTime);
-  }, [customReminderTime, premiumProfile.isPremium]);
+  }, [customReminderTime, premiumProfile.isPremium, t]);
 
   const toggleNotifications = useCallback(async (value: boolean) => {
     if (value) {
@@ -139,7 +162,7 @@ export default function SettingsScreen() {
       if (!permissionGranted) {
         setNotificationsEnabled(false);
         await AsyncStorage.setItem(NOTIFICATIONS_ENABLED_KEY, 'false');
-        Alert.alert('Notifications blocked', 'Allow notifications on your device first to turn reminders on.');
+        Alert.alert(t('Notifications blocked'), t('Allow notifications on your device first to turn reminders on.'));
         return;
       }
     }
@@ -152,28 +175,24 @@ export default function SettingsScreen() {
     } else {
       await cancelAllHabitReminders();
     }
-  }, [habits]);
+  }, [habits, t]);
 
   const updatePremiumProfile = useCallback(async (updates: Partial<PremiumProfile>) => {
     const nextProfile = { ...premiumProfile, ...updates };
     setPremiumProfile(nextProfile);
     await savePremiumProfile(nextProfile);
     await refreshThemePreferences();
-  }, [premiumProfile, refreshThemePreferences]);
-
-  const handleExportData = useCallback(async () => {
-    const exportData = JSON.stringify({ habits, exportedAt: new Date().toISOString(), overview: overallStats }, null, 2);
-    await Share.share({ message: exportData, title: 'HabitStreak backup' });
-  }, [habits, overallStats]);
+    void syncHabitWidgets(habits, nextProfile);
+  }, [habits, premiumProfile, refreshThemePreferences]);
 
   const handleClearData = useCallback(() => {
     Alert.alert(
-      'Clear All Data',
-      'This will delete every habit, note, streak, and reminder setting in the app.',
+      t('Clear All Data'),
+      t('This will delete every habit, note, streak, and reminder setting in the app.'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Clear',
+          text: t('Clear'),
           style: 'destructive',
           onPress: async () => {
             await saveHabits([]);
@@ -186,12 +205,178 @@ export default function SettingsScreen() {
             setDefaultReminderTime(DEFAULT_REMINDER_TIME);
             setPremiumProfile(defaultPremiumProfile);
             await refreshThemePreferences();
-            Alert.alert('Cleared', 'The app is back to the new-user state.');
+            void syncHabitWidgets([], defaultPremiumProfile);
+            Alert.alert(t('Cleared'), t('The app is back to the new-user state.'));
           },
         },
       ]
     );
-  }, [refreshThemePreferences]);
+  }, [refreshThemePreferences, t]);
+
+  const handleExportData = useCallback(async () => {
+    try {
+      const exportData = {
+        habits,
+        exportedAt: new Date().toISOString(),
+        overview: overallStats,
+        premiumProfile,
+      };
+
+      Alert.alert(t('Backup Snapshot'), JSON.stringify(exportData, null, 2), [{ text: t('OK') }]);
+    } catch {
+      Alert.alert(t('Error'), t('Failed to prepare backup snapshot.'));
+    }
+  }, [habits, overallStats, premiumProfile, t]);
+
+  const handleSendImmediateTestNotification = useCallback(async () => {
+    const result = await sendImmediateTestNotification();
+
+    if (!result.ok) {
+      Alert.alert(t('Notifications blocked'), t('Allow notifications first, then try the test again.'));
+      return;
+    }
+
+    Alert.alert(t('Immediate test sent'), t('You should see an in-app HabitStreak notification right away if notifications are working.'));
+  }, [t]);
+
+  const handleSendScheduledTestNotification = useCallback(async () => {
+    const result = await scheduleTestReminderNotification();
+
+    if (!result.ok) {
+      Alert.alert(t('Notifications blocked'), t('Allow notifications first, then try the test again.'));
+      return;
+    }
+
+    const scheduledCount = await getScheduledNotificationsCount();
+    Alert.alert(
+      t('Scheduled test created'),
+      t('A HabitStreak test should appear in about 10 seconds.\n\nScheduled notifications in queue: {{count}}', { count: scheduledCount })
+    );
+  }, [t]);
+
+  const refreshReminderDebug = useCallback(async () => {
+    const debugLines = await mapReminderDebugLines();
+
+    if (debugLines.length === 0) {
+      setReminderDebugLines([]);
+      Alert.alert(t('No reminder schedule yet'), t('Turn reminders on for a habit, save it, then come back here to inspect the next scheduled times.'));
+      return;
+    }
+
+    setReminderDebugLines(debugLines);
+    Alert.alert(t('Reminder schedule refreshed'), t('The latest reminder timing details are now shown under the reminder tools.'));
+  }, [mapReminderDebugLines, t]);
+
+  const renderWidgetPreviewModal = () => (
+    <Modal visible={showWidgetPreview} transparent animationType="fade" onRequestClose={() => setShowWidgetPreview(false)}>
+      <View style={styles.previewFill}>
+        <View style={[styles.previewBackdrop, { backgroundColor: colors.modalBackground }]}>
+          <View style={[styles.previewCard, { backgroundColor: colors.modalContent }]}>
+            <View style={[styles.previewHeader, { borderColor: colors.border }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>{t('Widget Preview')}</Text>
+              <TouchableOpacity style={[styles.previewCloseButton, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={() => setShowWidgetPreview(false)}>
+                <Ionicons name="close" size={18} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.previewScroller}
+              showsVerticalScrollIndicator
+              bounces
+              alwaysBounceVertical
+              nestedScrollEnabled
+              contentContainerStyle={styles.previewScroll}
+            >
+                <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 0 }]}>
+                  {t('This is an in-app preview of the widget designs.')}
+                </Text>
+
+                <Text style={[styles.groupLabel, { color: colors.text }]}>{t('Free: Quick View')}</Text>
+                <View style={styles.previewWidgetSmall}>
+                  <View style={[styles.previewWidgetInner, { backgroundColor: '#F6EFE4' }]}>
+                    <View style={styles.previewWidgetHeader}>
+                      <Ionicons name="flame" size={16} color={previewHabit?.color ?? accentColor} />
+                      <Text style={styles.previewBrand}>HabitStreak</Text>
+                    </View>
+                    <Text style={styles.previewHabitTitle}>{previewHabit?.name ?? t('Morning Walk')}</Text>
+                    <Text style={[styles.previewStreakValue, { color: previewHabit?.color ?? accentColor }]}>{previewHabit?.streak ?? 4}</Text>
+                    <Text style={styles.previewStatusText}>
+                      {previewHabit ? t('Ready for today') : t('Start your streak today')}
+                    </Text>
+                    <Text style={styles.previewMetaText}>
+                      {previewHabit?.reminderEnabled
+                        ? t('Reminder {{time}}', { time: formatReminderTime(previewHabit.reminderTimes[0] ?? previewHabit.reminderTime) })
+                        : t('Reminders off')}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.previewWidgetWide}>
+                  <View style={[styles.previewWidePill, { backgroundColor: previewHabit?.color ?? accentColor }]}>
+                    <Text style={styles.previewWideTopLabel}>{t('Today')}</Text>
+                    <Text style={styles.previewWideNumber}>{previewHabit?.streak ?? 4}</Text>
+                    <Text style={styles.previewWideBottomLabel}>{t('day streak')}</Text>
+                  </View>
+                  <View style={styles.previewWideCopy}>
+                    <Text style={styles.previewWideTitle}>{previewHabit?.name ?? t('Morning Walk')}</Text>
+                    <Text style={styles.previewWideStatus}>{previewHabit ? t('Ready for check-in') : t('Create your first habit')}</Text>
+                    <Text style={styles.previewWideMeta}>{habits.length || 1} {t(habits.length === 1 ? 'habit' : 'habits')}</Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.groupLabel, { color: colors.text, marginTop: 20 }]}>{t('Premium: Insights')}</Text>
+                <View style={styles.previewWidgetLarge}>
+                  <View style={styles.previewPremiumHeader}>
+                    <Ionicons name="bar-chart" size={16} color="#F7B955" />
+                    <Text style={styles.previewPremiumBrand}>HabitStreak+</Text>
+                  </View>
+                  <Text style={styles.previewPremiumTitle}>{previewHabit?.name ?? t('Morning Walk')}</Text>
+                  <Text style={styles.previewPremiumStatus}>
+                    {previewHabit
+                      ? t('{{rate}}% completion across your habits', { rate: overallStats.completionRate })
+                      : t('Advanced stats and top habits live here')}
+                  </Text>
+                  <View style={styles.previewPremiumStats}>
+                    <View>
+                      <Text style={styles.previewPremiumStatLabel}>{t('Completion')}</Text>
+                      <Text style={styles.previewPremiumStatValue}>{overallStats.completionRate || 0}%</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.previewPremiumStatLabel}>{t('Check-ins')}</Text>
+                      <Text style={styles.previewPremiumStatValueLight}>{overallStats.totalCheckIns || 0}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.previewPremiumList}>
+                    {(habits.length > 0 ? habits.slice(0, 3) : [{ id: 'demo-1', name: t('Morning Walk'), color: accentColor, streak: 4 }]).map(habit => (
+                      <View key={habit.id} style={styles.previewPremiumRow}>
+                        <Text style={[styles.previewPremiumDot, { color: habit.color }]}>{'\u25CF'}</Text>
+                        <Text style={styles.previewPremiumRowText}>{habit.name}</Text>
+                        <Text style={styles.previewPremiumRowValue}>{habit.streak}d</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={[styles.previewLockRow, { borderColor: colors.border }]}>
+                  <View style={[styles.previewLockChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={styles.previewLockChipText}>{previewHabit?.streak ?? 4}</Text>
+                  </View>
+                  <View style={[styles.previewLockRect, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.previewLockRectTitle, { color: colors.text }]}>{t('Lock Screen')}</Text>
+                    <Text style={[styles.previewLockRectText, { color: colors.textSecondary }]}>
+                      {premiumProfile.isPremium ? `${overallStats.weeklyConsistency}% ${t('this week')}` : t('Quick view of today')}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: accentColor }]} onPress={() => setShowWidgetPreview(false)}>
+                  <Text style={styles.primaryActionText}>{t('Close Preview')}</Text>
+                </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
@@ -199,8 +384,8 @@ export default function SettingsScreen() {
         <View style={styles.settingsBrandRow}>
           <Image source={require('../../assets/images/user-logo.png')} style={styles.settingsLogo} contentFit="contain" />
           <View style={styles.settingsBrandCopy}>
-            <Text style={[styles.title, { color: colors.text }]}>Settings</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Manage your app-wide controls, premium plan, and habit system.</Text>
+            <Text style={[styles.title, { color: colors.text }]}>{t('Settings')}</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{t('Manage your app-wide controls, premium plan, and habit system.')}</Text>
           </View>
         </View>
       </View>
@@ -208,78 +393,86 @@ export default function SettingsScreen() {
       <View style={[styles.section, { backgroundColor: premiumThemePacks[premiumProfile.themePack].card }]}>
         <View style={styles.compactPremiumHeader}>
           <View style={styles.compactPremiumCopy}>
-            <Text style={styles.premiumTitle}>HabitStreak {premiumProfile.isPremium ? 'Premium' : 'Free'}</Text>
+            <Text style={styles.premiumTitle}>HabitStreak {premiumProfile.isPremium ? t('Premium') : t('Free')}</Text>
             <Text style={styles.premiumSubtitle}>
-              {premiumProfile.isPremium ? 'Premium features are enabled on this device.' : `Free plan: up to ${FREE_HABIT_LIMIT} habits`}
+              {premiumProfile.isPremium ? t('Premium preview is active on this device.') : t('Free plan: up to {{count}} habits', { count: FREE_HABIT_LIMIT })}
             </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.compactPremiumButton, { borderColor: 'rgba(255,255,255,0.28)' }]}
+            onPress={() => (premiumProfile.isPremium ? updatePremiumProfile({ isPremium: false }) : updatePremiumProfile({ isPremium: true, softPaywallSeen: true }))}
+          >
+            <Text style={styles.compactPremiumButtonText}>
+              {premiumProfile.isPremium ? (isExpoGoEnvironment() ? t('Leave Preview') : t('Manage')) : t('Try Premium')}
+            </Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.premiumMeta}>{getSubscriptionSupportText()}</Text>
+        <Text style={styles.premiumMeta}>{t(getSubscriptionSupportText())}</Text>
         {!premiumProfile.isPremium ? (
-          <View style={styles.offerStack}>
-            {subscriptionOffers.map(offer => (
-              <View key={offer.id} style={styles.offerCard}>
-                <View style={styles.offerHeader}>
-                  <Text style={styles.offerTitle}>{offer.title}</Text>
-                  <View style={[styles.offerBadge, { backgroundColor: accentColor }]}>
-                    <Text style={styles.offerBadgeText}>{offer.badge}</Text>
+          <>
+            <View style={styles.offerStack}>
+              {subscriptionOffers.map(offer => (
+                <View key={offer.id} style={styles.offerCard}>
+                  <View style={styles.offerHeader}>
+                    <Text style={styles.offerTitle}>{t(offer.title)}</Text>
+                    <View style={[styles.offerBadge, { backgroundColor: accentColor }]}>
+                      <Text style={styles.offerBadgeText}>{t(offer.badge)}</Text>
+                    </View>
                   </View>
+                  <Text style={styles.offerPrice}>{offer.price}</Text>
+                  <Text style={styles.offerTrial}>{t(offer.trial)}</Text>
+                  <Text style={styles.offerDetail}>{t(offer.detail)}</Text>
                 </View>
-                <Text style={styles.offerPrice}>{offer.price}</Text>
-                <Text style={styles.offerTrial}>{offer.trial}</Text>
-                <Text style={styles.offerDetail}>{offer.detail}</Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <Text style={styles.premiumMeta}>Subscription billing will be added in a later release.</Text>
-        )}
+              ))}
+            </View>
+          </>
+        ) : null}
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Overview</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Overview')}</Text>
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: colors.text }]}>{overallStats.activeHabits}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Habits</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Habits')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: colors.text }]}>{overallStats.totalCheckIns}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Check-ins</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Check-ins')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: colors.text }]}>{overallStats.longestStreak}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Best</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Best')}</Text>
           </View>
         </View>
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: colors.text }]}>{overallStats.completionRate}%</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completion</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Completion')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: colors.text }]}>{overallStats.weeklyConsistency}%</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Weekly</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Weekly')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: colors.text }]}>{overallStats.notesCount}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Notes</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('Notes')}</Text>
           </View>
         </View>
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Appearance')}</Text>
         <View style={styles.settingItem}>
-          <Text style={[styles.settingLabel, { color: colors.text }]}>Dark Mode</Text>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>{t('Dark Mode')}</Text>
           <Switch value={theme === 'dark'} onValueChange={toggleTheme} trackColor={{ false: '#767577', true: accentColor }} />
         </View>
         <TouchableOpacity style={[styles.settingItem, styles.themeRow, { borderBottomColor: colors.border }]} onPress={() => setShowThemes(current => !current)}>
           <View>
-            <Text style={[styles.settingLabel, { color: colors.text }]}>Themes</Text>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>{t('Themes')}</Text>
             <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 4 }]}>
-              {premiumThemePacks[activeThemePack].label}
-              {premiumProfile.isPremium ? ' active' : ' active • premium unlocks more'}
+              {t(premiumThemePacks[activeThemePack].label)}
+              {premiumProfile.isPremium ? ` ${t('active')}` : ` ${t('active • premium unlocks more')}`}
             </Text>
           </View>
           <Ionicons name={showThemes ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
@@ -303,7 +496,7 @@ export default function SettingsScreen() {
                   ]}
                   onPress={() =>
                     isLocked
-                      ? Alert.alert('Premium themes', 'Premium unlocks extra theme packs across the app.')
+                      ? Alert.alert(t('Premium themes'), t('Premium unlocks extra theme packs across the app.'))
                       : updatePremiumProfile({ themePack: key as PremiumProfile['themePack'] })
                   }
                 >
@@ -316,7 +509,7 @@ export default function SettingsScreen() {
                   <View style={styles.themeCardCopy}>
                     <Text style={[styles.settingLabel, { color: colors.text }]}>{pack.label}</Text>
                     <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 4 }]}>
-                      {isLocked ? 'Premium only' : isActive ? 'Current theme' : 'Tap to use'}
+                      {isLocked ? t('Premium only') : isActive ? t('Current theme') : t('Tap to use')}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -324,7 +517,7 @@ export default function SettingsScreen() {
             })}
           </View>
         ) : null}
-        <Text style={[styles.groupLabel, { color: colors.text, marginTop: 16 }]}>Icon Style</Text>
+        <Text style={[styles.groupLabel, { color: colors.text, marginTop: 16 }]}>{t('Icon Style')}</Text>
         <View style={styles.optionWrap}>
           {Object.entries(premiumIconStyles).map(([key, icon]) => (
             <TouchableOpacity
@@ -333,22 +526,50 @@ export default function SettingsScreen() {
                 styles.choiceChip,
                 { borderColor: premiumProfile.appIconStyle === key ? accentColor : colors.border, backgroundColor: premiumProfile.appIconStyle === key ? accentColor : colors.background },
               ]}
-              onPress={() => (premiumProfile.isPremium ? updatePremiumProfile({ appIconStyle: key as PremiumProfile['appIconStyle'] }) : Alert.alert('Premium personalization', 'Custom icon styles are part of Premium.'))}
+              onPress={() => (premiumProfile.isPremium ? updatePremiumProfile({ appIconStyle: key as PremiumProfile['appIconStyle'] }) : Alert.alert(t('Premium personalization'), t('Custom icon styles are part of Premium.')))}
             >
-              <Text style={{ color: premiumProfile.appIconStyle === key ? '#fff' : colors.text }}>{icon.emoji} {icon.label}</Text>
+              <Text style={{ color: premiumProfile.appIconStyle === key ? '#fff' : colors.text }}>{icon.emoji} {t(icon.label)}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Reminders</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Language')}</Text>
+        <View style={styles.optionWrap}>
+          {(['en', 'ar'] as const).map(option => (
+            <TouchableOpacity
+              key={option}
+              style={[
+                styles.choiceChip,
+                {
+                  borderColor: language === option ? accentColor : colors.border,
+                  backgroundColor: language === option ? accentColor : colors.background,
+                },
+              ]}
+              onPress={async () => {
+                await setLanguage(option);
+                Alert.alert(
+                  tForLanguage(option, 'Language changed'),
+                  tForLanguage(option, 'The language was saved. Restart the app to apply Arabic right-to-left layout changes.')
+                );
+              }}
+            >
+              <Text style={{ color: language === option ? '#fff' : colors.text }}>{t(option === 'en' ? 'English' : 'Arabic')}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[styles.helperText, { color: colors.textSecondary }]}>{t('Restart app to apply RTL layout changes.')}</Text>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Reminders')}</Text>
         <View style={styles.settingItem}>
-          <Text style={[styles.settingLabel, { color: colors.text }]}>Notifications</Text>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>{t('Notifications')}</Text>
           <Switch value={notificationsEnabled} onValueChange={toggleNotifications} trackColor={{ false: '#767577', true: accentColor }} />
         </View>
         <TouchableOpacity style={styles.settingItem} onPress={cycleReminderTime}>
-          <Text style={[styles.settingLabel, { color: colors.text }]}>Default Reminder Time</Text>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>{t('Default Reminder Time')}</Text>
           <Text style={[styles.settingValue, { color: colors.text }]}>{formatReminderTime(defaultReminderTime)}</Text>
         </TouchableOpacity>
         <View style={styles.customTimeRow}>
@@ -363,31 +584,59 @@ export default function SettingsScreen() {
             autoCorrect={false}
           />
           <TouchableOpacity style={[styles.primaryAction, styles.inlineAction, { backgroundColor: accentColor }]} onPress={addCustomReminderTime}>
-            <Text style={styles.primaryActionText}>Set</Text>
+            <Text style={styles.primaryActionText}>{t('Set')}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.helperText, { color: colors.textSecondary }]}>Premium habits can stack multiple reminder times and notification styles.</Text>
+        <Text style={[styles.helperText, { color: colors.textSecondary }]}>{t('Premium habits can stack multiple reminder times and notification styles.')}</Text>
+        <TouchableOpacity onPress={handleSendImmediateTestNotification} style={[styles.primaryAction, { backgroundColor: accentColor }]}>
+          <Text style={styles.primaryActionText}>{t('Send Immediate Test')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleSendScheduledTestNotification} style={[styles.secondaryTestAction, { borderColor: accentColor }]}>
+          <Text style={[styles.secondaryTestActionText, { color: accentColor }]}>{t('Send 10s Scheduled Test')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={refreshReminderDebug} style={[styles.secondaryTestAction, { borderColor: colors.border }]}>
+          <Text style={[styles.secondaryTestActionText, { color: colors.text }]}>{t('Refresh Reminder Schedule')}</Text>
+        </TouchableOpacity>
+        {reminderDebugLines.length > 0 ? (
+          <View style={[styles.debugPanel, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <Text style={[styles.debugTitle, { color: colors.text }]}>{t('Scheduled reminders')}</Text>
+            {reminderDebugLines.map(line => (
+              <Text key={line} style={[styles.debugLine, { color: colors.textSecondary }]}>
+                {line}
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Premium Hub</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Premium Hub')}</Text>
         <View style={styles.hubCard}>
-          <Text style={[styles.hubTitle, { color: colors.text }]}>Cloud Backup & Sync</Text>
-          <Text style={[styles.helperText, { color: colors.textSecondary }]}>Backup snapshot is available now. Cross-device sync is scaffolded as a premium hub item and ready for backend wiring.</Text>
+          <Text style={[styles.hubTitle, { color: colors.text }]}>{t('Cloud Backup & Sync')}</Text>
+          <Text style={[styles.helperText, { color: colors.textSecondary }]}>{t('Backup snapshot is available now. Cross-device sync is scaffolded as a premium hub item and ready for backend wiring.')}</Text>
           <TouchableOpacity onPress={handleExportData} style={[styles.primaryAction, { backgroundColor: accentColor }]}>
-            <Text style={styles.primaryActionText}>Create Backup Snapshot</Text>
+            <Text style={styles.primaryActionText}>{t('Create Backup Snapshot')}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.hubCard}>
-          <Text style={[styles.hubTitle, { color: colors.text }]}>Coach</Text>
-          <Text style={[styles.helperText, { color: colors.textSecondary }]}>{topCoach ? topCoach.weeklyReview : 'Create a habit and add notes to start building coach reviews.'}</Text>
+          <Text style={[styles.hubTitle, { color: colors.text }]}>{t('Widgets & Lock Screen')}</Text>
+          <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+            {t('Free includes the Quick View widget. Premium unlocks the larger insights widget and richer lock screen layouts in supported iOS builds.')}
+          </Text>
+          <TouchableOpacity onPress={() => setShowWidgetPreview(true)} style={[styles.primaryAction, { backgroundColor: accentColor }]}>
+            <Text style={styles.primaryActionText}>{t('Preview Widget Designs')}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.hubCard}>
+          <Text style={[styles.hubTitle, { color: colors.text }]}>{t('Coach')}</Text>
+          <Text style={[styles.helperText, { color: colors.textSecondary }]}>{topCoach ? topCoach.weeklyReview : t('Create a habit and add notes to start building coach reviews.')}</Text>
         </View>
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Habit List</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Habit List')}</Text>
         {habits.length === 0 ? (
-          <Text style={[styles.helperText, { color: colors.textSecondary }]}>No habits yet. Create one from the home tab.</Text>
+          <Text style={[styles.helperText, { color: colors.textSecondary }]}>{t('No habits yet. Create one from the home tab.')}</Text>
         ) : (
           habits.map(habit => (
             <View key={habit.id} style={[styles.habitRow, { borderColor: colors.border }]}>
@@ -395,7 +644,7 @@ export default function SettingsScreen() {
               <View style={styles.habitCopy}>
                 <Text style={[styles.settingLabel, { color: colors.text }]}>{habit.name}</Text>
                 <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-                  {habit.totalCheckIns} check-ins • longest {habit.longestStreak} • reminders {habit.reminderEnabled ? formatReminderTimes(habit.reminderTimes) : 'off'}
+                  {habit.totalCheckIns} {t('check-ins lowercase')} • {t('longest')} {habit.longestStreak} • {t('reminders lowercase')} {habit.reminderEnabled ? formatReminderTimes(habit.reminderTimes) : t('off')}
                 </Text>
               </View>
             </View>
@@ -404,14 +653,15 @@ export default function SettingsScreen() {
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Data</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('Data')}</Text>
         <TouchableOpacity onPress={handleExportData} style={styles.exportButton}>
-          <Text style={styles.exportButtonText}>Backup Snapshot</Text>
+          <Text style={styles.exportButtonText}>{t('Backup Snapshot')}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={handleClearData} style={styles.dangerButton}>
-          <Text style={styles.dangerButtonText}>Clear All Data</Text>
+          <Text style={styles.dangerButtonText}>{t('Clear All Data')}</Text>
         </TouchableOpacity>
       </View>
+      {renderWidgetPreviewModal()}
     </ScrollView>
   );
 }

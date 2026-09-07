@@ -424,26 +424,28 @@ export function getOverallStats(habits: Habit[]) {
   };
 }
 
-export function getHabitStatusText(habit: Habit, today = getDateKey()) {
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+export function getHabitStatusText(habit: Habit, translate: Translate = key => key, today = getDateKey()) {
   const status = getHabitStatus(habit, today);
 
   if (status.isDoneToday) {
-    return 'Completed today';
+    return translate('Completed today');
   }
 
   if (status.recoverable) {
-    return 'Use a skip pass to save your streak';
+    return translate('Use a skip pass to save your streak');
   }
 
   if (status.streakBroken) {
-    return 'Streak reset. Start fresh today';
+    return translate('Streak reset. Start fresh today');
   }
 
   if (!habit.lastCheckInDate) {
-    return 'Start your streak today';
+    return translate('Start your streak today');
   }
 
-  return 'Ready for today’s check-in';
+  return translate('Ready for today’s check-in');
 }
 
 export function getRecentNotes(habit: Habit, count = 3) {
@@ -453,12 +455,12 @@ export function getRecentNotes(habit: Habit, count = 3) {
     .slice(0, count);
 }
 
-export function getCoachSummary(habit: Habit) {
+export function getCoachSummary(habit: Habit, translate: Translate = key => key) {
   const stats = getHabitStats(habit);
   const status = getHabitStatus(habit);
   const recentNotes = getRecentNotes(habit, 2).map(entry => entry.note);
 
-  const headline =
+  const headlineKey =
     status.recoverable
       ? 'Protect your momentum'
       : stats.weeklyConsistency >= 80
@@ -467,28 +469,36 @@ export function getCoachSummary(habit: Habit) {
           ? 'You are building consistency'
           : 'A smaller daily target could help';
 
-  const weeklyReview =
+  const weeklyReviewKey =
     stats.weeklyConsistency >= 80
-      ? `You completed ${stats.weeklyCompleted} of the last 7 days. Keep the routine simple and repeatable.`
-      : `You completed ${stats.weeklyCompleted} of the last 7 days. Aim for one easy win tomorrow.`;
+      ? 'You completed {{completed}} of the last 7 days. Keep the routine simple and repeatable.'
+      : 'You completed {{completed}} of the last 7 days. Aim for one easy win tomorrow.';
 
-  const noteSummary =
+  const noteSummaryKey =
     recentNotes.length > 0
-      ? `Recent notes mention: ${recentNotes.join(' | ')}`
+      ? 'Recent notes mention: {{notes}}'
       : 'Add quick notes after check-ins to unlock better weekly reviews.';
 
-  const suggestion =
+  const suggestionKey =
     habit.reminderEnabled && habit.reminderTimes.length > 1
-      ? `Your reminder stack is set for ${habit.reminderTimes.join(', ')}. Keep only the times you actually respond to.`
+      ? 'Your reminder stack is set for {{times}}. Keep only the times you actually respond to.'
       : habit.reminderEnabled
-        ? `Your reminder is set for ${habit.reminderTimes[0]}. Match it to the moment you already have spare attention.`
+        ? 'Your reminder is set for {{time}}. Match it to the moment you already have spare attention.'
         : 'Turn on reminders if you want a more stable daily cue.';
 
   return {
-    headline,
-    weeklyReview,
-    noteSummary,
-    suggestion,
+    headline: translate(headlineKey),
+    weeklyReview: translate(weeklyReviewKey, { completed: stats.weeklyCompleted }),
+    noteSummary:
+      recentNotes.length > 0
+        ? translate(noteSummaryKey, { notes: recentNotes.join(' | ') })
+        : translate(noteSummaryKey),
+    suggestion:
+      habit.reminderEnabled && habit.reminderTimes.length > 1
+        ? translate(suggestionKey, { times: habit.reminderTimes.join(', ') })
+        : habit.reminderEnabled
+          ? translate(suggestionKey, { time: habit.reminderTimes[0] })
+          : translate(suggestionKey),
   };
 }
 
