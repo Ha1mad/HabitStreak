@@ -46,10 +46,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('dark');
   const [activeThemePack, setActiveThemePack] = useState<PremiumTheme>(defaultPremiumProfile.themePack);
 
-  useEffect(() => {
-    loadTheme().catch(error => console.log('Error loading theme:', error));
-  }, []);
-
   const loadTheme = async () => {
     try {
       const [savedTheme, premiumProfile] = await Promise.all([AsyncStorage.getItem('theme'), loadPremiumProfile()]);
@@ -63,6 +59,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       console.log('Error loading theme:', error);
     }
   };
+
+  useEffect(() => {
+    // Restore persisted theme preferences after the initial render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadTheme().catch(error => console.log('Error loading theme:', error));
+  }, []);
 
   const toggleTheme = async () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
