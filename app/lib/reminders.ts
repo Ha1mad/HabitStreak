@@ -7,17 +7,7 @@ export const NOTIFICATIONS_ENABLED_KEY = 'notificationsEnabled';
 
 const REMINDER_CHANNEL_ID = 'habit-reminders';
 const SCHEDULED_REMINDER_IDS_KEY = 'scheduledReminderIdsByHabit';
-const REMINDER_DEBUG_KEY = 'reminderDebugInfo';
-
 type ReminderMap = Record<string, string[]>;
-type ReminderDebugEntry = {
-  habitId: string;
-  habitName: string;
-  reminderTime: string;
-  dailyTriggerAt: string | null;
-  expectedNextAt: string;
-  bootstrapTriggerAt: string | null;
-};
 
 let notificationsConfigured = false;
 
@@ -87,10 +77,6 @@ async function loadScheduledReminderMap() {
 
 async function saveScheduledReminderMap(map: ReminderMap) {
   await AsyncStorage.setItem(SCHEDULED_REMINDER_IDS_KEY, JSON.stringify(map));
-}
-
-async function saveReminderDebugInfo(entries: ReminderDebugEntry[]) {
-  await AsyncStorage.setItem(REMINDER_DEBUG_KEY, JSON.stringify(entries));
 }
 
 function buildDailyTrigger(hours: number, minutes: number) {
@@ -187,7 +173,6 @@ export async function cancelAllHabitReminders() {
 
   await Promise.all(identifiers.map(identifier => Notifications.cancelScheduledNotificationAsync(identifier).catch(() => null)));
   await saveScheduledReminderMap({});
-  await saveReminderDebugInfo([]);
 }
 
 export async function syncHabitReminders(habits: Habit[]) {
@@ -201,7 +186,6 @@ export async function syncHabitReminders(habits: Habit[]) {
 
   const permissionGranted = await hasNotificationPermission();
   if (!permissionGranted) {
-    await saveReminderDebugInfo([]);
     return;
   }
 
@@ -210,7 +194,6 @@ export async function syncHabitReminders(habits: Habit[]) {
   await Promise.all(previousIdentifiers.map(identifier => Notifications.cancelScheduledNotificationAsync(identifier).catch(() => null)));
 
   const nextMap: ReminderMap = {};
-  const debugEntries: ReminderDebugEntry[] = [];
   const now = new Date();
 
   for (const habit of habits) {
@@ -250,14 +233,6 @@ export async function syncHabitReminders(habits: Habit[]) {
         reminderIds.push(bootstrapIdentifier);
       }
 
-      debugEntries.push({
-        habitId: habit.id,
-        habitName: habit.name,
-        reminderTime: time,
-        dailyTriggerAt: projectedDailyDate ? projectedDailyDate.toISOString() : null,
-        expectedNextAt: expectedNextDate.toISOString(),
-        bootstrapTriggerAt: bootstrapIdentifier ? expectedNextDate.toISOString() : null,
-      });
     }
 
     if (reminderIds.length > 0) {
@@ -266,67 +241,4 @@ export async function syncHabitReminders(habits: Habit[]) {
   }
 
   await saveScheduledReminderMap(nextMap);
-  await saveReminderDebugInfo(debugEntries);
-}
-
-export async function scheduleTestReminderNotification() {
-  await configureReminderNotifications();
-
-  if (!(await requestReminderPermissions())) {
-    return { ok: false as const, reason: 'permission-denied' as const };
-  }
-
-  const identifier = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'HabitStreak test',
-      body: 'Your notification system is working.',
-      sound: true,
-      data: { type: 'test-reminder' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 10,
-      ...(Platform.OS === 'android' ? { channelId: REMINDER_CHANNEL_ID } : {}),
-    },
-  });
-
-  return { ok: true as const, identifier };
-}
-
-export async function sendImmediateTestNotification() {
-  await configureReminderNotifications();
-
-  if (!(await requestReminderPermissions())) {
-    return { ok: false as const, reason: 'permission-denied' as const };
-  }
-
-  const identifier = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'HabitStreak test',
-      body: 'This is an immediate in-app notification test.',
-      sound: true,
-      data: { type: 'immediate-test-reminder' },
-    },
-    trigger: null,
-  });
-
-  return { ok: true as const, identifier };
-}
-
-export async function getScheduledNotificationsCount() {
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  return scheduled.length;
-}
-
-export async function getReminderDebugInfo() {
-  const raw = await AsyncStorage.getItem(REMINDER_DEBUG_KEY);
-  if (!raw) {
-    return [] as ReminderDebugEntry[];
-  }
-
-  try {
-    return JSON.parse(raw) as ReminderDebugEntry[];
-  } catch {
-    return [] as ReminderDebugEntry[];
-  }
 }

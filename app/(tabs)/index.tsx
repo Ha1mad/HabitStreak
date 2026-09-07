@@ -47,23 +47,13 @@ import {
 } from '../lib/habits';
 import {
   PremiumProfile,
-  canCreateAnotherHabit,
   defaultPremiumProfile,
   loadPremiumProfile,
-  premiumFeatureGroups,
   premiumThemePacks,
   savePremiumProfile,
 } from '../lib/premium';
 import { NOTIFICATIONS_ENABLED_KEY, requestReminderPermissions, syncHabitReminders } from '../lib/reminders';
-import {
-  getPremiumCtaLabel,
-  getSubscriptionSupportText,
-  INSTALL_STARTED_AT_KEY,
-  isExpoGoEnvironment,
-  subscriptionOffers,
-  WELCOME_PROMO_WINDOW_DAYS,
-} from '../lib/subscriptions';
-import { syncHabitWidgets } from '../lib/widget-sync';
+import { INSTALL_STARTED_AT_KEY } from '../lib/subscriptions';
 
 const PRESET_COLORS = ['#007AFF', '#FF3B30', '#34C759', '#FF9500', '#AF52DE', '#00C7BE', '#FFD60A', '#FF453A'];
 const PREMIUM_COLORS = [
@@ -143,9 +133,7 @@ export default function HomeScreen() {
   const [showExpandedColors, setShowExpandedColors] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
-  const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
   const [habitToDelete, setHabitToDelete] = useState<string | null>(null);
   const [habitName, setHabitName] = useState('');
@@ -159,9 +147,6 @@ export default function HomeScreen() {
   const [protectionMode, setProtectionMode] = useState<'standard' | 'shield'>('standard');
   const [noteDraft, setNoteDraft] = useState('');
   const [isLoaded, setIsLoaded] = useState(false);
-  const [paywallReason, setPaywallReason] = useState('Unlock premium to keep growing.');
-  const [isWelcomePromoActive, setIsWelcomePromoActive] = useState(true);
-  const [welcomePromoDaysLeft, setWelcomePromoDaysLeft] = useState(WELCOME_PROMO_WINDOW_DAYS);
   const swipeX = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const currentHabitIndexRef = useRef(0);
@@ -182,15 +167,10 @@ export default function HomeScreen() {
       if (!savedInstallStartedAt) {
         await AsyncStorage.setItem(INSTALL_STARTED_AT_KEY, installStartedAt.toString());
       }
-      const promoWindowMs = WELCOME_PROMO_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-      const elapsedMs = Date.now() - installStartedAt;
-      setIsWelcomePromoActive(elapsedMs <= promoWindowMs);
-      setWelcomePromoDaysLeft(Math.max(1, Math.ceil((promoWindowMs - elapsedMs) / (24 * 60 * 60 * 1000))));
       setHabits(savedHabits);
       setDefaultReminderTime(savedReminderTime || DEFAULT_REMINDER_TIME);
       setPremiumProfile(savedProfile);
       void syncHabitReminders(savedHabits);
-      void syncHabitWidgets(savedHabits, savedProfile);
     } catch (error) {
       console.log('Error loading app state', error);
     } finally {
@@ -215,7 +195,6 @@ export default function HomeScreen() {
 
     saveHabits(habits).catch(error => console.log('Error saving habits', error));
     void syncHabitReminders(habits);
-    void syncHabitWidgets(habits, premiumProfile);
   }, [habits, isLoaded, premiumProfile]);
 
   useEffect(() => {
@@ -224,7 +203,6 @@ export default function HomeScreen() {
     }
 
     savePremiumProfile(premiumProfile).catch(error => console.log('Error saving premium profile', error));
-    void syncHabitWidgets(habits, premiumProfile);
   }, [habits, isLoaded, premiumProfile]);
 
   useEffect(() => {
@@ -256,11 +234,6 @@ export default function HomeScreen() {
   currentHabitIndexRef.current = currentHabitIndex;
   habitsLengthRef.current = habits.length;
 
-  const openPaywall = useCallback((reason: string) => {
-    setPaywallReason(reason);
-    setShowPaywallModal(true);
-  }, []);
-
   const resetHabitForm = useCallback(() => {
     setEditingHabitId(null);
     setHabitName('');
@@ -274,15 +247,10 @@ export default function HomeScreen() {
   }, [defaultReminderTime]);
 
   const openCreateModal = useCallback(() => {
-    if (!canCreateAnotherHabit(premiumProfile.isPremium, habits.length)) {
-      openPaywall('Free plan includes up to 2 habits. Upgrade for unlimited habits.');
-      return;
-    }
-
     resetHabitForm();
     setShowExpandedColors(false);
     setShowHabitModal(true);
-  }, [habits.length, openPaywall, premiumProfile.isPremium, resetHabitForm]);
+  }, [resetHabitForm]);
 
   const openEditModal = useCallback(() => {
     if (!currentHabit) {
@@ -304,11 +272,6 @@ export default function HomeScreen() {
 
   const toggleReminderSlot = useCallback(
     (option: string) => {
-      if (!premiumProfile.isPremium) {
-        openPaywall('Multiple reminder times are part of Premium reminders.');
-        return;
-      }
-
       setReminderTimes(currentSlots => {
         if (currentSlots.includes(option)) {
           return currentSlots.length === 1 ? currentSlots : currentSlots.filter(item => item !== option);
@@ -317,15 +280,10 @@ export default function HomeScreen() {
         return [...currentSlots, option].sort();
       });
     },
-    [openPaywall, premiumProfile.isPremium]
+    []
   );
 
   const handleAddCustomReminderTime = useCallback(() => {
-    if (!premiumProfile.isPremium) {
-      openPaywall('Custom reminder times are part of Premium reminders.');
-      return;
-    }
-
     const normalizedTime = normalizeReminderInput(customReminderTime);
 
     if (!normalizedTime) {
@@ -341,7 +299,7 @@ export default function HomeScreen() {
       return [...currentSlots, normalizedTime].sort();
     });
     setCustomReminderTime('');
-  }, [customReminderTime, openPaywall, premiumProfile.isPremium]);
+  }, [customReminderTime]);
 
   const handleSaveHabit = useCallback(() => {
     const performSave = async () => {
@@ -365,9 +323,9 @@ export default function HomeScreen() {
         color: selectedColor,
         reminderEnabled,
         reminderTime: reminderTimes[0] ?? reminderTime,
-        reminderTimes: premiumProfile.isPremium ? reminderTimes : [reminderTime],
-        notificationStyle: premiumProfile.isPremium ? notificationStyle : 'gentle',
-        protectionMode: premiumProfile.isPremium ? protectionMode : 'standard',
+        reminderTimes,
+        notificationStyle,
+        protectionMode,
       } as const;
 
       if (editingHabitId) {
@@ -390,11 +348,6 @@ export default function HomeScreen() {
       return;
     }
 
-    if (!editingHabitId && !canCreateAnotherHabit(premiumProfile.isPremium, habits.length)) {
-      openPaywall('Upgrade to add more than 2 habits.');
-      return;
-    }
-
     performSave().catch(error => {
       console.log('Error saving habit with reminders', error);
       Alert.alert('Reminder error', 'Something went wrong while saving the reminder setup.');
@@ -402,10 +355,7 @@ export default function HomeScreen() {
   }, [
     editingHabitId,
     habitName,
-    habits.length,
     notificationStyle,
-    openPaywall,
-    premiumProfile.isPremium,
     protectionMode,
     reminderEnabled,
     reminderTime,
@@ -511,137 +461,6 @@ export default function HomeScreen() {
       Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, friction: 5 }).start();
     },
     [swipeX]
-  );
-
-  const handleUpgrade = useCallback(() => {
-    setPremiumProfile(current => ({ ...current, isPremium: true, softPaywallSeen: true }));
-    setShowPaywallModal(false);
-    Alert.alert(
-      isExpoGoEnvironment() ? 'Premium preview enabled' : 'Premium unlocked',
-      isExpoGoEnvironment()
-        ? 'Premium preview is now enabled on this device. Real store billing will be connected in your development build later.'
-        : 'Premium features are now enabled on this device.'
-    );
-  }, []);
-
-  const renderPaywallModal = () => (
-    <Modal visible={showPaywallModal} transparent animationType="fade" onRequestClose={() => setShowPaywallModal(false)}>
-      <View style={styles.modalFill}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowPaywallModal(false)} />
-        <View style={[styles.modalBackdrop, { backgroundColor: colors.modalBackground }]}>
-          <View style={[styles.modalScrollCard, { backgroundColor: colors.modalContent, minHeight: 0, maxHeight: '84%' }]}>
-            <ScrollView
-              showsVerticalScrollIndicator
-              nestedScrollEnabled
-              bounces
-              contentContainerStyle={styles.modalScrollContent}
-            >
-              <Text style={[styles.modalTitle, { color: colors.text }]}>HabitStreak Premium</Text>
-              <Text style={[styles.confirmText, { color: colors.textSecondary }]}>{paywallReason}</Text>
-              <Text style={[styles.paywallMessage, { color: colors.text }]}>Unlock more habits, smarter reminders, deeper insights, and more control over your streak system.</Text>
-              <Text style={[styles.helperCopy, { color: colors.textSecondary, textAlign: 'center', marginBottom: 12 }]}>
-                {getSubscriptionSupportText()}
-              </Text>
-              <Text style={[styles.helperCopy, { color: colors.textSecondary, textAlign: 'center', marginBottom: 12 }]}>
-                Free trial availability depends on store eligibility. The welcome offer is shown only during the first week in the app.
-              </Text>
-              <View style={styles.offerStack}>
-                {subscriptionOffers.map(offer => (
-                  <View key={offer.id} style={[styles.offerCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                    <View style={styles.offerHeader}>
-                      <Text style={[styles.offerTitle, { color: colors.text }]}>{offer.title}</Text>
-                      <View style={[styles.offerBadge, { backgroundColor: accentColor }]}>
-                        <Text style={styles.offerBadgeText}>{offer.badge}</Text>
-                      </View>
-                    </View>
-                    <Text style={[styles.offerPrice, { color: colors.text }]}>{offer.price}</Text>
-                    <Text style={[styles.offerTrial, { color: accentColor }]}>{offer.trial}</Text>
-                    <Text style={[styles.offerDetail, { color: colors.textSecondary }]}>{offer.detail}</Text>
-                  </View>
-                ))}
-              </View>
-              {premiumFeatureGroups.premium.map(feature => (
-                <Text key={feature} style={[styles.paywallFeature, { color: colors.textSecondary }]}>
-                  • {feature}
-                </Text>
-              ))}
-              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: accentColor }]} onPress={handleUpgrade}>
-                <Text style={styles.primaryButtonText}>{getPremiumCtaLabel(false)}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => {
-                  setPremiumProfile(current => ({ ...current, softPaywallSeen: true }));
-                  setShowPaywallModal(false);
-                }}
-              >
-                <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Skip for now</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const renderPlanModal = () => (
-    <Modal visible={showPlanModal} transparent animationType="fade" onRequestClose={() => setShowPlanModal(false)}>
-      <View style={styles.modalFill}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowPlanModal(false)} />
-        <View style={[styles.modalBackdrop, { backgroundColor: colors.modalBackground }]}>
-            <View style={[styles.modalScrollCard, { backgroundColor: colors.modalContent, minHeight: 0, maxHeight: '78%' }]}>
-              <ScrollView
-                showsVerticalScrollIndicator
-                nestedScrollEnabled
-                bounces
-                contentContainerStyle={styles.modalScrollContent}
-              >
-              <View style={styles.modalTopRow}>
-                <View style={styles.modalTopSpacer} />
-                <TouchableOpacity
-                  style={[styles.modalCloseButton, { backgroundColor: colors.background, borderColor: colors.border }]}
-                  onPress={() => setShowPlanModal(false)}
-                >
-                  <Ionicons name="close" size={18} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Plans</Text>
-              <Text style={[styles.confirmText, { color: colors.textSecondary }]}>
-                Free gives you the core HabitStreak experience. Premium unlocks more habits, stronger reminders, deeper insights, and extra personalization.
-              </Text>
-              <Text style={[styles.planGroupTitle, { color: colors.text }]}>Free</Text>
-              {premiumFeatureGroups.free.map(feature => (
-                <Text key={feature} style={[styles.paywallFeature, { color: colors.textSecondary }]}>
-                  • {feature}
-                </Text>
-              ))}
-              <Text style={[styles.planGroupTitle, { color: colors.text, marginTop: 14 }]}>Premium</Text>
-              {premiumFeatureGroups.premium.map(feature => (
-                <Text key={feature} style={[styles.paywallFeature, { color: colors.textSecondary }]}>
-                  • {feature}
-                </Text>
-              ))}
-              {!premiumProfile.isPremium ? (
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: accentColor }]}
-                  onPress={() => {
-                    setShowPlanModal(false);
-                    openPaywall('Upgrade whenever you want more habits, richer reminders, and deeper insights.');
-                  }}
-                >
-                  <Text style={styles.primaryButtonText}>{getPremiumCtaLabel(false)}</Text>
-                </TouchableOpacity>
-              ) : null}
-              {premiumProfile.isPremium ? (
-                <TouchableOpacity style={styles.cancelButton} onPress={() => setShowPlanModal(false)}>
-                  <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Close</Text>
-                </TouchableOpacity>
-              ) : null}
-              </ScrollView>
-            </View>
-        </View>
-      </View>
-    </Modal>
   );
 
   const renderCalendarModal = () => (
@@ -1029,7 +848,7 @@ export default function HomeScreen() {
                 Unlimited habits, smarter reminders, full calendar history, widgets, premium themes, and deeper streak protection.
               </Text>
               <Text style={[styles.helperCopy, { color: colors.textSecondary, marginTop: 8 }]}>
-                Welcome offer ends in {welcomePromoDaysLeft} {welcomePromoDaysLeft === 1 ? 'day' : 'days'} • 3-day free trial for eligible new subscribers • Monthly $4.99 • Yearly $29.99
+                Premium plans are coming in a later release • Monthly $4.99 • Yearly $29.99
               </Text>
             </TouchableOpacity>
           ) : null}

@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import {
   Alert,
-  Modal,
   ScrollView,
   StyleSheet,
   Switch,
@@ -27,17 +26,12 @@ import {
   savePremiumProfile,
 } from '../lib/premium';
 import {
-  getReminderDebugInfo,
-  getScheduledNotificationsCount,
   NOTIFICATIONS_ENABLED_KEY,
   cancelAllHabitReminders,
   requestReminderPermissions,
-  scheduleTestReminderNotification,
-  sendImmediateTestNotification,
   syncHabitReminders,
 } from '../lib/reminders';
-import { getSubscriptionSupportText, isExpoGoEnvironment, subscriptionOffers } from '../lib/subscriptions';
-import { syncHabitWidgets } from '../lib/widget-sync';
+import { getSubscriptionSupportText, subscriptionOffers } from '../lib/subscriptions';
 
 const REMINDER_OPTIONS = ['07:00', '08:00', '12:00', '18:00', '20:00', '21:00'];
 
@@ -88,35 +82,20 @@ export default function SettingsScreen() {
   const [customReminderTime, setCustomReminderTime] = useState('');
   const [premiumProfile, setPremiumProfile] = useState<PremiumProfile>(defaultPremiumProfile);
   const [showThemes, setShowThemes] = useState(false);
-  const [showWidgetPreview, setShowWidgetPreview] = useState(false);
-  const [reminderDebugLines, setReminderDebugLines] = useState<string[]>([]);
-
-  const mapReminderDebugLines = useCallback(async () => {
-    const debugInfo = await getReminderDebugInfo();
-    return debugInfo.map(entry => {
-      const expected = new Date(entry.expectedNextAt).toLocaleString();
-      const daily = entry.dailyTriggerAt ? new Date(entry.dailyTriggerAt).toLocaleString() : 'not available';
-      const bootstrap = entry.bootstrapTriggerAt ? ` • first boost ${new Date(entry.bootstrapTriggerAt).toLocaleTimeString()}` : '';
-      return `${entry.habitName} • ${formatReminderTime(entry.reminderTime)} • next ${expected} • daily ${daily}${bootstrap}`;
-    });
-  }, []);
 
   const loadData = useCallback(async () => {
-    const [savedHabits, notificationsValue, reminderValue, savedProfile, debugLines] = await Promise.all([
+    const [savedHabits, notificationsValue, reminderValue, savedProfile] = await Promise.all([
       loadHabits(),
       AsyncStorage.getItem('notificationsEnabled'),
       AsyncStorage.getItem('defaultReminderTime'),
       loadPremiumProfile(),
-      mapReminderDebugLines(),
     ]);
 
     setHabits(savedHabits);
     setNotificationsEnabled(notificationsValue !== 'false');
     setDefaultReminderTime(reminderValue || DEFAULT_REMINDER_TIME);
     setPremiumProfile(savedProfile);
-    setReminderDebugLines(debugLines);
-    void syncHabitWidgets(savedHabits, savedProfile);
-  }, [mapReminderDebugLines]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -127,7 +106,6 @@ export default function SettingsScreen() {
   const overallStats = useMemo(() => getOverallStats(habits), [habits]);
   const topCoach = useMemo(() => (habits.length > 0 ? getCoachSummary(habits[0]) : null), [habits]);
   const accentColor = premiumThemePacks[premiumProfile.themePack].accent;
-  const previewHabit = habits[0];
 
   const cycleReminderTime = useCallback(async () => {
     const currentIndex = REMINDER_OPTIONS.indexOf(defaultReminderTime);
@@ -180,8 +158,7 @@ export default function SettingsScreen() {
     setPremiumProfile(nextProfile);
     await savePremiumProfile(nextProfile);
     await refreshThemePreferences();
-    void syncHabitWidgets(habits, nextProfile);
-  }, [habits, premiumProfile, refreshThemePreferences]);
+  }, [premiumProfile, refreshThemePreferences]);
 
   const handleClearData = useCallback(() => {
     Alert.alert(
@@ -203,174 +180,12 @@ export default function SettingsScreen() {
             setDefaultReminderTime(DEFAULT_REMINDER_TIME);
             setPremiumProfile(defaultPremiumProfile);
             await refreshThemePreferences();
-            void syncHabitWidgets([], defaultPremiumProfile);
             Alert.alert('Cleared', 'The app is back to the new-user state.');
           },
         },
       ]
     );
   }, [refreshThemePreferences]);
-
-  const handleExportData = useCallback(async () => {
-    try {
-      const exportData = {
-        habits,
-        exportedAt: new Date().toISOString(),
-        overview: overallStats,
-        premiumProfile,
-      };
-
-      Alert.alert('Backup Snapshot', JSON.stringify(exportData, null, 2), [{ text: 'OK' }]);
-    } catch {
-      Alert.alert('Error', 'Failed to prepare backup snapshot.');
-    }
-  }, [habits, overallStats, premiumProfile]);
-
-  const handleSendImmediateTestNotification = useCallback(async () => {
-    const result = await sendImmediateTestNotification();
-
-    if (!result.ok) {
-      Alert.alert('Notifications blocked', 'Allow notifications first, then try the test again.');
-      return;
-    }
-
-    Alert.alert('Immediate test sent', 'You should see an in-app HabitStreak notification right away if notifications are working.');
-  }, []);
-
-  const handleSendScheduledTestNotification = useCallback(async () => {
-    const result = await scheduleTestReminderNotification();
-
-    if (!result.ok) {
-      Alert.alert('Notifications blocked', 'Allow notifications first, then try the test again.');
-      return;
-    }
-
-    const scheduledCount = await getScheduledNotificationsCount();
-    Alert.alert(
-      'Scheduled test created',
-      `A HabitStreak test should appear in about 10 seconds.\n\nScheduled notifications in queue: ${scheduledCount}`
-    );
-  }, []);
-
-  const refreshReminderDebug = useCallback(async () => {
-    const debugLines = await mapReminderDebugLines();
-
-    if (debugLines.length === 0) {
-      setReminderDebugLines([]);
-      Alert.alert('No reminder schedule yet', 'Turn reminders on for a habit, save it, then come back here to inspect the next scheduled times.');
-      return;
-    }
-
-    setReminderDebugLines(debugLines);
-    Alert.alert('Reminder schedule refreshed', 'The latest reminder timing details are now shown under the reminder tools.');
-  }, [mapReminderDebugLines]);
-
-  const renderWidgetPreviewModal = () => (
-    <Modal visible={showWidgetPreview} transparent animationType="fade" onRequestClose={() => setShowWidgetPreview(false)}>
-      <View style={styles.previewFill}>
-        <View style={[styles.previewBackdrop, { backgroundColor: colors.modalBackground }]}>
-          <View style={[styles.previewCard, { backgroundColor: colors.modalContent }]}>
-            <View style={[styles.previewHeader, { borderColor: colors.border }]}>
-              <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>Widget Preview</Text>
-              <TouchableOpacity style={[styles.previewCloseButton, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={() => setShowWidgetPreview(false)}>
-                <Ionicons name="close" size={18} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.previewScroller}
-              showsVerticalScrollIndicator
-              bounces
-              alwaysBounceVertical
-              nestedScrollEnabled
-              contentContainerStyle={styles.previewScroll}
-            >
-                <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 0 }]}>
-                  These are in-app previews of the real widget layouts, so you can review the designs before we build the iPhone widget version.
-                </Text>
-
-                <Text style={[styles.groupLabel, { color: colors.text }]}>Free: Quick View</Text>
-                <View style={styles.previewWidgetSmall}>
-                  <View style={[styles.previewWidgetInner, { backgroundColor: '#F6EFE4' }]}>
-                    <View style={styles.previewWidgetHeader}>
-                      <Ionicons name="flame" size={16} color={previewHabit?.color ?? accentColor} />
-                      <Text style={styles.previewBrand}>HabitStreak</Text>
-                    </View>
-                    <Text style={styles.previewHabitTitle}>{previewHabit?.name ?? 'Morning Walk'}</Text>
-                    <Text style={[styles.previewStreakValue, { color: previewHabit?.color ?? accentColor }]}>{previewHabit?.streak ?? 4}</Text>
-                    <Text style={styles.previewStatusText}>
-                      {previewHabit ? 'Ready for today' : 'Start your streak today'}
-                    </Text>
-                    <Text style={styles.previewMetaText}>
-                      {previewHabit?.reminderEnabled ? `Reminder ${formatReminderTime(previewHabit.reminderTimes[0] ?? previewHabit.reminderTime)}` : 'Reminders off'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.previewWidgetWide}>
-                  <View style={[styles.previewWidePill, { backgroundColor: previewHabit?.color ?? accentColor }]}>
-                    <Text style={styles.previewWideTopLabel}>Today</Text>
-                    <Text style={styles.previewWideNumber}>{previewHabit?.streak ?? 4}</Text>
-                    <Text style={styles.previewWideBottomLabel}>day streak</Text>
-                  </View>
-                  <View style={styles.previewWideCopy}>
-                    <Text style={styles.previewWideTitle}>{previewHabit?.name ?? 'Morning Walk'}</Text>
-                    <Text style={styles.previewWideStatus}>{previewHabit ? 'Ready for check-in' : 'Create your first habit'}</Text>
-                    <Text style={styles.previewWideMeta}>{habits.length || 1} habit{habits.length === 1 ? '' : 's'}</Text>
-                  </View>
-                </View>
-
-                <Text style={[styles.groupLabel, { color: colors.text, marginTop: 20 }]}>Premium: Insights</Text>
-                <View style={styles.previewWidgetLarge}>
-                  <View style={styles.previewPremiumHeader}>
-                    <Ionicons name="bar-chart" size={16} color="#F7B955" />
-                    <Text style={styles.previewPremiumBrand}>HabitStreak+</Text>
-                  </View>
-                  <Text style={styles.previewPremiumTitle}>{previewHabit?.name ?? 'Morning Walk'}</Text>
-                  <Text style={styles.previewPremiumStatus}>
-                    {previewHabit ? `${overallStats.completionRate}% completion across your habits` : 'Advanced stats and top habits live here'}
-                  </Text>
-                  <View style={styles.previewPremiumStats}>
-                    <View>
-                      <Text style={styles.previewPremiumStatLabel}>Completion</Text>
-                      <Text style={styles.previewPremiumStatValue}>{overallStats.completionRate || 0}%</Text>
-                    </View>
-                    <View>
-                      <Text style={styles.previewPremiumStatLabel}>Check-ins</Text>
-                      <Text style={styles.previewPremiumStatValueLight}>{overallStats.totalCheckIns || 0}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.previewPremiumList}>
-                    {(habits.length > 0 ? habits.slice(0, 3) : [{ id: 'demo-1', name: 'Morning Walk', color: accentColor, streak: 4 }]).map(habit => (
-                      <View key={habit.id} style={styles.previewPremiumRow}>
-                        <Text style={[styles.previewPremiumDot, { color: habit.color }]}>{'\u25CF'}</Text>
-                        <Text style={styles.previewPremiumRowText}>{habit.name}</Text>
-                        <Text style={styles.previewPremiumRowValue}>{habit.streak}d</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-
-                <View style={[styles.previewLockRow, { borderColor: colors.border }]}>
-                  <View style={[styles.previewLockChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={styles.previewLockChipText}>{previewHabit?.streak ?? 4}</Text>
-                  </View>
-                  <View style={[styles.previewLockRect, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.previewLockRectTitle, { color: colors.text }]}>Lock Screen</Text>
-                    <Text style={[styles.previewLockRectText, { color: colors.textSecondary }]}>
-                      {premiumProfile.isPremium ? `${overallStats.weeklyConsistency}% this week` : 'Quick view of today'}
-                    </Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: accentColor }]} onPress={() => setShowWidgetPreview(false)}>
-                  <Text style={styles.primaryActionText}>Close Preview</Text>
-                </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
@@ -389,38 +204,30 @@ export default function SettingsScreen() {
           <View style={styles.compactPremiumCopy}>
             <Text style={styles.premiumTitle}>HabitStreak {premiumProfile.isPremium ? 'Premium' : 'Free'}</Text>
             <Text style={styles.premiumSubtitle}>
-              {premiumProfile.isPremium ? 'Premium preview is active on this device.' : `Free plan: up to ${FREE_HABIT_LIMIT} habits`}
+              {premiumProfile.isPremium ? 'Premium features are enabled on this device.' : `Free plan: up to ${FREE_HABIT_LIMIT} habits`}
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.compactPremiumButton, { borderColor: 'rgba(255,255,255,0.28)' }]}
-            onPress={() => (premiumProfile.isPremium ? updatePremiumProfile({ isPremium: false }) : updatePremiumProfile({ isPremium: true, softPaywallSeen: true }))}
-          >
-            <Text style={styles.compactPremiumButtonText}>
-              {premiumProfile.isPremium ? (isExpoGoEnvironment() ? 'Leave Preview' : 'Manage') : 'Try Premium'}
-            </Text>
-          </TouchableOpacity>
         </View>
         <Text style={styles.premiumMeta}>{getSubscriptionSupportText()}</Text>
         {!premiumProfile.isPremium ? (
-          <>
-            <View style={styles.offerStack}>
-              {subscriptionOffers.map(offer => (
-                <View key={offer.id} style={styles.offerCard}>
-                  <View style={styles.offerHeader}>
-                    <Text style={styles.offerTitle}>{offer.title}</Text>
-                    <View style={[styles.offerBadge, { backgroundColor: accentColor }]}>
-                      <Text style={styles.offerBadgeText}>{offer.badge}</Text>
-                    </View>
+          <View style={styles.offerStack}>
+            {subscriptionOffers.map(offer => (
+              <View key={offer.id} style={styles.offerCard}>
+                <View style={styles.offerHeader}>
+                  <Text style={styles.offerTitle}>{offer.title}</Text>
+                  <View style={[styles.offerBadge, { backgroundColor: accentColor }]}>
+                    <Text style={styles.offerBadgeText}>{offer.badge}</Text>
                   </View>
-                  <Text style={styles.offerPrice}>{offer.price}</Text>
-                  <Text style={styles.offerTrial}>{offer.trial}</Text>
-                  <Text style={styles.offerDetail}>{offer.detail}</Text>
                 </View>
-              ))}
-            </View>
-          </>
-        ) : null}
+                <Text style={styles.offerPrice}>{offer.price}</Text>
+                <Text style={styles.offerTrial}>{offer.trial}</Text>
+                <Text style={styles.offerDetail}>{offer.detail}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.premiumMeta}>Subscription billing will be added in a later release.</Text>
+        )}
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -554,25 +361,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
         <Text style={[styles.helperText, { color: colors.textSecondary }]}>Premium habits can stack multiple reminder times and notification styles.</Text>
-        <TouchableOpacity onPress={handleSendImmediateTestNotification} style={[styles.primaryAction, { backgroundColor: accentColor }]}>
-          <Text style={styles.primaryActionText}>Send Immediate Test</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleSendScheduledTestNotification} style={[styles.secondaryTestAction, { borderColor: accentColor }]}>
-          <Text style={[styles.secondaryTestActionText, { color: accentColor }]}>Send 10s Scheduled Test</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={refreshReminderDebug} style={[styles.secondaryTestAction, { borderColor: colors.border }]}>
-          <Text style={[styles.secondaryTestActionText, { color: colors.text }]}>Refresh Reminder Schedule</Text>
-        </TouchableOpacity>
-        {reminderDebugLines.length > 0 ? (
-          <View style={[styles.debugPanel, { borderColor: colors.border, backgroundColor: colors.background }]}>
-            <Text style={[styles.debugTitle, { color: colors.text }]}>Scheduled reminders</Text>
-            {reminderDebugLines.map(line => (
-              <Text key={line} style={[styles.debugLine, { color: colors.textSecondary }]}>
-                {line}
-              </Text>
-            ))}
-          </View>
-        ) : null}
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -582,15 +370,6 @@ export default function SettingsScreen() {
           <Text style={[styles.helperText, { color: colors.textSecondary }]}>Backup snapshot is available now. Cross-device sync is scaffolded as a premium hub item and ready for backend wiring.</Text>
           <TouchableOpacity onPress={handleExportData} style={[styles.primaryAction, { backgroundColor: accentColor }]}>
             <Text style={styles.primaryActionText}>Create Backup Snapshot</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.hubCard}>
-          <Text style={[styles.hubTitle, { color: colors.text }]}>Widgets & Lock Screen</Text>
-          <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-            Free includes the Quick View widget. Premium unlocks the larger insights widget and richer lock screen layouts in supported iOS builds.
-          </Text>
-          <TouchableOpacity onPress={() => setShowWidgetPreview(true)} style={[styles.primaryAction, { backgroundColor: accentColor }]}>
-            <Text style={styles.primaryActionText}>Preview Widget Designs</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.hubCard}>
@@ -627,7 +406,6 @@ export default function SettingsScreen() {
           <Text style={styles.dangerButtonText}>Clear All Data</Text>
         </TouchableOpacity>
       </View>
-      {renderWidgetPreviewModal()}
     </ScrollView>
   );
 }

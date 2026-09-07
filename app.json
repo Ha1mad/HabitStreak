@@ -40,27 +40,6 @@
           }
         }
       ],
-      [
-        "expo-widgets",
-        {
-          "bundleIdentifier": "com.habitstreak.app.ExpoWidgetsTarget",
-          "groupIdentifier": "group.com.habitstreak.app",
-          "widgets": [
-            {
-              "name": "HabitQuickWidget",
-              "displayName": "Habit Quick View",
-              "description": "See your main habit and streak at a glance.",
-              "supportedFamilies": ["systemSmall", "systemMedium", "accessoryInline"]
-            },
-            {
-              "name": "HabitPlusWidget",
-              "displayName": "Habit Insights",
-              "description": "Expanded home screen and lock screen views for premium stats.",
-              "supportedFamilies": ["systemLarge", "accessoryCircular", "accessoryRectangular"]
-            }
-          ]
-        }
-      ]
     ],
     "experiments": {
       "typedRoutes": true,
