@@ -868,7 +868,10 @@ export default function HomeScreen() {
           <TouchableOpacity style={[styles.iconButton, { backgroundColor: accentColor }]} onPress={openCreateModal}>
             <Ionicons name="add" size={24} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.planButton, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setShowPlanModal(true)}>
+          <TouchableOpacity
+            style={[styles.planButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => Alert.alert('HabitStreak Plans', premiumProfile.isPremium ? 'Premium features are enabled on this device.' : 'Premium billing will be added in a later release.')}
+          >
             <Ionicons name={premiumProfile.isPremium ? 'diamond-outline' : 'pricetag-outline'} size={16} color={colors.text} />
             <Text style={[styles.planButtonText, { color: colors.text }]}>{premiumProfile.isPremium ? 'Premium' : 'Plans'}</Text>
           </TouchableOpacity>

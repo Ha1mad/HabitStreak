@@ -6,6 +6,7 @@ import { Image } from 'expo-image';
 import {
   Alert,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -159,6 +160,11 @@ export default function SettingsScreen() {
     await savePremiumProfile(nextProfile);
     await refreshThemePreferences();
   }, [premiumProfile, refreshThemePreferences]);
+
+  const handleExportData = useCallback(async () => {
+    const exportData = JSON.stringify({ habits, exportedAt: new Date().toISOString(), overview: overallStats }, null, 2);
+    await Share.share({ message: exportData, title: 'HabitStreak backup' });
+  }, [habits, overallStats]);
 
   const handleClearData = useCallback(() => {
     Alert.alert(

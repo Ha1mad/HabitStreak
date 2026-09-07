@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, View } from 'react-native';
+import { ColorValue, Platform, View } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
 function TabIcon({
@@ -11,7 +11,7 @@ function TabIcon({
   inactiveName,
 }: {
   focused: boolean;
-  color: string;
+  color: ColorValue;
   activeName: keyof typeof Ionicons.glyphMap;
   inactiveName: keyof typeof Ionicons.glyphMap;
 }) {
