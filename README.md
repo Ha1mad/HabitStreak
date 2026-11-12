@@ -6,11 +6,11 @@
 
 <p align="center">
   An Arabic-first habit app for iPhone that helps people stay consistent and recover fast when they slip.<br/>
-  <b>Formerly HabitStreak.</b> Launching on the App Store in the Saudi and Gulf market, fall 2026.
+  <b>Formerly HabitStreak.</b> Live on the App Store since October 2026, with about 6,000 downloads.
 </p>
 
 <p align="center">
-  <a href="https://tnafs.netlify.app">Website and waitlist</a>
+  <a href="https://apps.apple.com/app/id6819559733">Download on the App Store</a> · <a href="https://tnafs.netlify.app">Website</a>
 </p>
 
 > This is a public showcase. The app's source code lives in a private repository.
@@ -26,7 +26,7 @@
 
 | Goal reached | Insights | Paywall |
 | :---: | :---: | :---: |
-| <img src="screenshots/4-goal-reached.png" width="240" alt="Full-page celebration with a shareable streak card" /> | <img src="screenshots/5-insights.png" width="240" alt="Weekly rhythm and calendar" /> | <img src="screenshots/6-paywall.png" width="240" alt="Personalized paywall with a 14-day trial" /> |
+| <img src="screenshots/4-goal-reached.png" width="240" alt="Full-page celebration with a shareable streak card" /> | <img src="screenshots/5-insights.png" width="240" alt="Weekly rhythm and calendar" /> | <img src="screenshots/6-paywall.png" width="240" alt="Personalized paywall (screenshot from an earlier build; the trial is now 7 days)" /> |
 
 ## The idea
 
@@ -48,7 +48,7 @@ TNAFS keeps the pressure of a streak but makes a single slip survivable:
 - **Streak engine** written as pure functions over `YYYY-MM-DD` date keys instead of `Date` objects,
   so decay, Shield use and refills are testable without timezone bugs. Every saved record passes
   through a normalizer, so older installs upgrade safely.
-- **Subscriptions with RevenueCat.** A hard paywall with a 14-day trial, prices loaded from the store,
+- **Subscriptions with RevenueCat.** A hard paywall with a 7-day free trial on the yearly plan, prices loaded from the store,
   trial-eligibility checks, restore purchases, and App Store guideline 3.1.2 requirements built in.
 - **Prompts timed so they don't feel pushy.** The notification permission is asked on day 2 through
   a one-button primer, and people who declined get a gentle follow-up. The review prompt appears only
@@ -58,12 +58,14 @@ TNAFS keeps the pressure of a streak but makes a single slip survivable:
   and an English version.
 - **Brand and accessibility.** The mascot and icon are drawn in code as SVG. Animations are
   disabled when Reduce Motion is on, and decorative art is hidden from screen readers.
-- **Privacy by design.** No account is needed, and habit data never leaves the phone. Only
-  subscription status goes to RevenueCat.
+- **Privacy by design.** No account is needed, and habit data stays on the phone.
+  Subscription status goes to RevenueCat, and app usage analytics go to PostHog.
 
 ## Tech stack
 
 - **Framework:** Expo SDK 57 · React Native 0.86 · React 19 · TypeScript · Expo Router (typed routes)
+- **Shipping:** EAS Build, TestFlight and over-the-air updates
+- **Analytics:** PostHog (funnels and feature flags) and RevenueCat
 - **Libraries:**
   - react-native-purchases (RevenueCat)
   - expo-notifications
@@ -76,7 +78,8 @@ TNAFS keeps the pressure of a streak but makes a single slip survivable:
 
 ## Status
 
-- Feature-complete for v1.0 and preparing for App Store submission.
+- **Live on the App Store** since 14 October 2026 (iPhone), about 6,000 downloads.
+- Shipped updates through v1.1.0; v1.1.1 is in development.
 - **Planned for later:** backup and sync with Supabase accounts, then opt-in leagues with friends.
 
 ---
