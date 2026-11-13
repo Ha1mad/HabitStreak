@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/icon.png" width="96" alt="TNAFS app icon: a sand cat" />
+  <img src="screenshots/icon.png" width="96" alt="TNAFS app icon" />
 </p>
 
 <h1 align="center">TNAFS · تنافس</h1>
@@ -20,13 +20,20 @@
 
 ## Screenshots
 
-| Onboarding | Home | Shield |
+| Home | Home (Arabic, RTL) | Shield demo in onboarding |
 | :---: | :---: | :---: |
-| <img src="screenshots/1-onboarding.png" width="240" alt="Onboarding hook screen with the sand cat" /> | <img src="screenshots/2-home.png" width="240" alt="Home screen with a 4-day streak" /> | <img src="screenshots/3-shield.png" width="240" alt="Shield offer after a missed day" /> |
+| <img src="screenshots/home.png" width="240" alt="Home screen with a 12-day streak and today's steps" /> | <img src="screenshots/home-ar.png" width="240" alt="The same Home screen in Arabic, right-to-left" /> | <img src="screenshots/shield-demo.png" width="240" alt="Onboarding demo: tap to miss a day and watch the Shield save the streak" /> |
 
-| Goal reached | Insights | Paywall |
+| Insights | Edit habit and reminders | Paywall |
 | :---: | :---: | :---: |
-| <img src="screenshots/4-goal-reached.png" width="240" alt="Full-page celebration with a shareable streak card" /> | <img src="screenshots/5-insights.png" width="240" alt="Weekly rhythm and calendar" /> | <img src="screenshots/6-paywall.png" width="240" alt="Personalized paywall (screenshot from an earlier build; the trial is now 7 days)" /> |
+| <img src="screenshots/insights.png" width="240" alt="Insights: 30-day wins, weekly rhythm and calendar" /> | <img src="screenshots/edit-habit.png" width="240" alt="Edit habit: color, reminder time and notification style" /> | <img src="screenshots/paywall.png" width="240" alt="Paywall with a 7-day free trial on the yearly and monthly plans" /> |
+
+<p align="center">
+  <img src="screenshots/alarm-ios26.png" width="240" alt="A TNAFS reminder ringing as a system alarm on a real iPhone running iOS 26" /><br/>
+  <sub>On a real iPhone: a TNAFS reminder ringing as a system alarm through iOS 26 AlarmKit (version 1.1.1).</sub>
+</p>
+
+<sub>Screenshots are from version 1.1.1, captured November 2026.</sub>
 
 ## The idea
 
@@ -44,20 +51,21 @@ TNAFS keeps the pressure of a streak but makes a single slip survivable:
 
 - **Onboarding where every question configures something real.** Goal, obstacle, daily time and
   commitment length become the starter habit, its reminder style, its name and the target on Home.
-  It's tap-only, with no typing, and ends with a real first check-in before the paywall.
+  It's tap-only, with no typing, and includes a hands-on demo of how the Shield saves a streak.
 - **Streak engine** written as pure functions over `YYYY-MM-DD` date keys instead of `Date` objects,
   so decay, Shield use and refills are testable without timezone bugs. Every saved record passes
   through a normalizer, so older installs upgrade safely.
-- **Subscriptions with RevenueCat.** A hard paywall with a 7-day free trial on the yearly plan, prices loaded from the store,
+- **Subscriptions with RevenueCat.** A hard paywall with a 7-day free trial, prices loaded from the store,
   trial-eligibility checks, restore purchases, and App Store guideline 3.1.2 requirements built in.
-- **Prompts timed so they don't feel pushy.** The notification permission is asked on day 2 through
-  a one-button primer, and people who declined get a gentle follow-up. The review prompt appears only
-  after a milestone, using Apple's own sheet. Shareable streak cards appear from day 7.
-  There's at most one interruption per launch.
+- **Reminders that are hard to miss.** Local notifications with Gentle, Focus and Persistent styles.
+  Version 1.1.1 adds reminders that ring as real system alarms on iOS 26 through AlarmKit.
+- **Shipping and fixing in production.** EAS builds, TestFlight and over-the-air updates. I used
+  PostHog and RevenueCat funnels to find where people drop off, and diagnosed and fixed a bug that
+  broke the paywall for returning users, shipped as an over-the-air update.
 - **Arabic-first localization.** Full RTL layout, all six Arabic plural forms, Gulf-dialect copy,
   and an English version.
-- **Brand and accessibility.** The mascot and icon are drawn in code as SVG. Animations are
-  disabled when Reduce Motion is on, and decorative art is hidden from screen readers.
+- **Brand and accessibility.** A sand-cat mascot in five poses. Animations are disabled when
+  Reduce Motion is on, and decorative art is hidden from screen readers.
 - **Privacy by design.** No account is needed, and habit data stays on the phone.
   Subscription status goes to RevenueCat, and app usage analytics go to PostHog.
 
@@ -79,7 +87,9 @@ TNAFS keeps the pressure of a streak but makes a single slip survivable:
 ## Status
 
 - **Live on the App Store** since 14 October 2026 (iPhone), about 6,000 downloads.
-- Shipped updates through v1.1.0; v1.1.1 is in development.
+- **Version 1.1.1 submitted to Apple on 12 November 2026**, in review. It adds reminders that ring as
+  real system alarms on iOS 26 (AlarmKit), Loud reminders by default, a redesigned Day 0 to Day 2
+  first-run experience, and a 7-day free trial on both plans.
 - **Planned for later:** backup and sync with Supabase accounts, then opt-in leagues with friends.
 
 ---
